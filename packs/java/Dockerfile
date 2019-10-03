@@ -1,12 +1,18 @@
-FROM maven:3-jdk-11 as BUILD
-
+#syntax=docker/dockerfile:experimental
+FROM maven:3.6.1-jdk-11 AS build
+WORKDIR /usr/src/app
+# copy just the pom.xml for cache efficiency
+COPY ./pom.xml /usr/src/app
+# go-offline using the pom.xml
+RUN --mount=type=cache,target=/root/.m2 mvn -f /usr/src/app/pom.xml dependency:go-offline
+# now copy the rest of the code and run an offline build
 COPY . /usr/src/app
-RUN mvn --batch-mode -f /usr/src/app/pom.xml clean package
+RUN --mount=type=cache,target=/root/.m2 mvn -o clean package 
 
-FROM openjdk:11-jre-slim
-ENV PORT 4567
-EXPOSE 4567
-COPY --from=BUILD /usr/src/app/target /opt/target
+FROM adoptopenjdk/openjdk11:alpine-jre
+ENV SERVER_PORT 80
+EXPOSE 80
+COPY --from=build /usr/src/app/target/*.jar /opt/target/app.jar
 WORKDIR /opt/target
 
-CMD ["/bin/bash", "-c", "find -type f -name '*-with-dependencies.jar' | xargs java -jar"]
+CMD ["java", "-jar", "/opt/target/app.jar", "--server.port=80" ]
